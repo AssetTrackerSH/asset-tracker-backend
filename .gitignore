@@ -1,0 +1,23 @@
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+**/.vs/
+**/appsettings.Development.json
+**/appsettings.Production.json
+
+# Flutter
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/build/
+mobile/.packages
+
+# Secrets
+*.env
+.env*
+
+# Markdown
+*.md

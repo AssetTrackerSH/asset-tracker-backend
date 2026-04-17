@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/backend/" />
+  <Folder Name="/backend/src/" />
+  <Folder Name="/backend/src/Api/">
+    <Project Path="backend/src/Api/PortfolioTracker.Api.csproj" />
+  </Folder>
+  <Folder Name="/backend/src/Application/">
+    <Project Path="backend/src/Application/PortfolioTracker.Application.csproj" />
+  </Folder>
+  <Folder Name="/backend/src/Domain/">
+    <Project Path="backend/src/Domain/PortfolioTracker.Domain.csproj" />
+  </Folder>
+  <Folder Name="/backend/src/Infrastructure/">
+    <Project Path="backend/src/Infrastructure/PortfolioTracker.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/backend/src/Workers/">
+    <Project Path="backend/src/Workers/PortfolioTracker.Workers.csproj" />
+  </Folder>
+</Solution>
