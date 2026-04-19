@@ -1,6 +1,31 @@
 @PortfolioTracker.Api_HostAddress = http://localhost:5238
 
-GET {{PortfolioTracker.Api_HostAddress}}/weatherforecast/
+### Get prices in TRY (default)
+GET {{PortfolioTracker.Api_HostAddress}}/api/prices
+Accept: application/json
+
+###
+
+### Get prices in USD
+GET {{PortfolioTracker.Api_HostAddress}}/api/prices?baseCurrency=USD
+Accept: application/json
+
+###
+
+### Get prices in EUR
+GET {{PortfolioTracker.Api_HostAddress}}/api/prices?baseCurrency=EUR
+Accept: application/json
+
+###
+
+### Get prices in GBP
+GET {{PortfolioTracker.Api_HostAddress}}/api/prices?baseCurrency=GBP
+Accept: application/json
+
+###
+
+### Invalid currency (should return 400 Bad Request)
+GET {{PortfolioTracker.Api_HostAddress}}/api/prices?baseCurrency=INVALID
 Accept: application/json
 
 ###
