@@ -6,7 +6,9 @@
       "Bash(dotnet add:*)",
       "Bash(dotnet nuget list:*)",
       "Bash(dotnet build:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(dir:*)",
+      "Bash(rm:*)"
     ]
   }
 }

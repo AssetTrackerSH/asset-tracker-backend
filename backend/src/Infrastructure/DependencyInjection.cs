@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using PortfolioTracker.Domain.Services;
 using PortfolioTracker.Infrastructure.Configuration;
+using PortfolioTracker.Infrastructure.ExternalServices.GoldApi;
 using PortfolioTracker.Infrastructure.ExternalServices.Tcmb;
 using PortfolioTracker.Infrastructure.Services;
 
@@ -18,10 +19,22 @@ public static class DependencyInjection
         services.Configure<TcmbOptions>(
             configuration.GetSection(TcmbOptions.SectionName));
 
+        // Configure GoldApiOptions
+        services.Configure<GoldApiOptions>(
+            configuration.GetSection(GoldApiOptions.SectionName));
+
         // Register HttpClient for TCMB
         services.AddHttpClient<ITcmbClient, TcmbClient>((serviceProvider, client) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<TcmbOptions>>().Value;
+            client.BaseAddress = new Uri(options.BaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
+        });
+
+        // Register HttpClient for GoldApi
+        services.AddHttpClient<IGoldApiClient, GoldApiClient>((serviceProvider, client) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<GoldApiOptions>>().Value;
             client.BaseAddress = new Uri(options.BaseUrl);
             client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
         });
