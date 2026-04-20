@@ -6,6 +6,7 @@ using PortfolioTracker.Domain.Entities;
 using PortfolioTracker.Domain.Services;
 using PortfolioTracker.Domain.ValueObjects;
 using PortfolioTracker.Infrastructure.Configuration;
+using PortfolioTracker.Infrastructure.ExternalServices.GoldApi;
 using PortfolioTracker.Infrastructure.ExternalServices.Tcmb;
 
 namespace PortfolioTracker.Infrastructure.Services;
@@ -13,20 +14,32 @@ namespace PortfolioTracker.Infrastructure.Services;
 public class CachedExchangeRateProvider : IExchangeRateProvider
 {
     private readonly ITcmbClient _tcmbClient;
+    private readonly IGoldApiClient _goldApiClient;
     private readonly IMemoryCache _cache;
     private readonly ILogger<CachedExchangeRateProvider> _logger;
     private readonly TcmbOptions _options;
 
     private const string ExchangeRatesCacheKeyPrefix = "ExchangeRates";
     private const string PreciousMetalsCacheKeyPrefix = "PreciousMetals";
+    private const decimal TroyOunceToGrams = 31.1034768m;
+
+    private static readonly (string Symbol, PreciousMetalType MetalType)[] SupportedMetals =
+    [
+        ("XAU", PreciousMetalType.Gold),
+        ("XAG", PreciousMetalType.Silver),
+        ("XPT", PreciousMetalType.Platinum),
+        ("XPD", PreciousMetalType.Palladium),
+    ];
 
     public CachedExchangeRateProvider(
         ITcmbClient tcmbClient,
+        IGoldApiClient goldApiClient,
         IMemoryCache cache,
         ILogger<CachedExchangeRateProvider> logger,
         IOptions<TcmbOptions> options)
     {
         _tcmbClient = tcmbClient ?? throw new ArgumentNullException(nameof(tcmbClient));
+        _goldApiClient = goldApiClient ?? throw new ArgumentNullException(nameof(goldApiClient));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
@@ -47,7 +60,7 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
         var response = await _tcmbClient.GetDailyCurrencyRatesAsync(cancellationToken);
 
         var exchangeRates = response.Currencies
-            .Where(c => c.ForexBuying > 0 && c.ForexSelling > 0) // Filter out invalid rates
+            .Where(c => c.ForexBuying > 0 && c.ForexSelling > 0)
             .Select(c =>
             {
                 try
@@ -85,12 +98,58 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
         return exchangeRates;
     }
 
-    public Task<IReadOnlyList<PreciousMetalPrice>> GetLatestPreciousMetalPricesAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<PreciousMetalPrice>> GetLatestPreciousMetalPricesAsync(CancellationToken cancellationToken = default)
     {
-        // TODO: Implement when TCMB precious metals endpoint is available
-        // For now, return empty list
-        _logger.LogDebug("Precious metal prices not yet implemented, returning empty list");
-        return Task.FromResult<IReadOnlyList<PreciousMetalPrice>>(Array.Empty<PreciousMetalPrice>());
+        var cacheKey = $"{PreciousMetalsCacheKeyPrefix}_{DateTime.UtcNow:yyyyMMdd}";
+
+        if (_cache.TryGetValue<IReadOnlyList<PreciousMetalPrice>>(cacheKey, out var cached))
+        {
+            _logger.LogDebug("Precious metal prices found in cache");
+            return cached!;
+        }
+
+        var tcmbResponse = await _tcmbClient.GetDailyCurrencyRatesAsync(cancellationToken);
+        var usdCurrency = tcmbResponse.Currencies.FirstOrDefault(c => c.Code == "USD");
+
+        if (usdCurrency is null || usdCurrency.ForexBuying <= 0)
+        {
+            _logger.LogWarning("USD/TRY rate not found in TCMB response, cannot convert precious metal prices");
+            return Array.Empty<PreciousMetalPrice>();
+        }
+
+        var usdToTryRate = usdCurrency.ForexBuying;
+        var date = ParseTcmbDate(tcmbResponse.Date);
+
+        var metals = new List<PreciousMetalPrice>();
+
+        foreach (var (symbol, metalType) in SupportedMetals)
+        {
+            try
+            {
+                var spotPrice = await _goldApiClient.GetSpotPriceAsync(symbol, cancellationToken);
+
+                // spotPrice.Price USD/oz → TRY/oz → TRY/gram
+                var pricePerOunceInTry = spotPrice.Price * usdToTryRate;
+                var pricePerGramInTry = pricePerOunceInTry / TroyOunceToGrams;
+
+                metals.Add(new PreciousMetalPrice(metalType, pricePerGramInTry, pricePerOunceInTry, date));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch price for {Symbol}, skipping", symbol);
+            }
+        }
+
+        var cacheOptions = new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_options.CacheExpirationMinutes)
+        };
+
+        _cache.Set(cacheKey, metals, cacheOptions);
+
+        _logger.LogInformation("Cached {Count} precious metal prices", metals.Count);
+
+        return metals;
     }
 
     private static DateTime ParseTcmbDate(string dateString)
@@ -106,7 +165,6 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
             return date;
         }
 
-        // Fallback to today if parsing fails
         return DateTime.UtcNow;
     }
 }
