@@ -6,6 +6,7 @@ using PortfolioTracker.Infrastructure.Configuration;
 using PortfolioTracker.Infrastructure.ExternalServices.Binance;
 using PortfolioTracker.Infrastructure.ExternalServices.GoldApi;
 using PortfolioTracker.Infrastructure.ExternalServices.Tcmb;
+using PortfolioTracker.Infrastructure.ExternalServices.Twelvedata;
 using PortfolioTracker.Infrastructure.Services;
 
 namespace PortfolioTracker.Infrastructure;
@@ -28,6 +29,10 @@ public static class DependencyInjection
         services.Configure<BinanceOptions>(
             configuration.GetSection(BinanceOptions.SectionName));
 
+        // Configure TwelvedataOptions
+        services.Configure<TwelvedataOptions>(
+            configuration.GetSection(TwelvedataOptions.SectionName));
+
         // Register HttpClient for TCMB
         services.AddHttpClient<ITcmbClient, TcmbClient>((serviceProvider, client) =>
         {
@@ -48,6 +53,14 @@ public static class DependencyInjection
         services.AddHttpClient<IBinanceClient, BinanceClient>((serviceProvider, client) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<BinanceOptions>>().Value;
+            client.BaseAddress = new Uri(options.BaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
+        });
+
+        // Register HttpClient for Twelvedata
+        services.AddHttpClient<ITwelvedataClient, TwelvedataClient>((serviceProvider, client) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<TwelvedataOptions>>().Value;
             client.BaseAddress = new Uri(options.BaseUrl);
             client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
         });

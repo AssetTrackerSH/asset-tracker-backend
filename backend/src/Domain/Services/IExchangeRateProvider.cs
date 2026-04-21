@@ -7,4 +7,5 @@ public interface IExchangeRateProvider
     Task<IReadOnlyList<ExchangeRate>> GetLatestExchangeRatesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PreciousMetalPrice>> GetLatestPreciousMetalPricesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CryptoPrice>> GetLatestCryptoPricesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<StockPrice>> GetLatestStockPricesAsync(CancellationToken cancellationToken = default);
 }

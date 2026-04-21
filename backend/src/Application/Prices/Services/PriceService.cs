@@ -129,13 +129,27 @@ public class PriceService : IPriceService
                 })
                 .ToList();
 
+            var stockPrices = await _exchangeRateProvider.GetLatestStockPricesAsync(cancellationToken);
+
+            var stockDtos = stockPrices
+                .Select(s => new StockPriceDto
+                {
+                    Symbol = s.Symbol,
+                    Name = s.Name,
+                    Exchange = s.Exchange,
+                    PriceInUsd = s.PriceInUsd,
+                    PriceInTry = s.PriceInTry
+                })
+                .ToList();
+
             return new PriceResponseDto
             {
                 BaseCurrency = baseCurrencyCode.Code,
                 Timestamp = DateTime.UtcNow,
                 Currencies = currencyDtos,
                 PreciousMetals = metalDtos,
-                Cryptos = cryptoDtos
+                Cryptos = cryptoDtos,
+                Stocks = stockDtos
             };
         }
         catch (InvalidOperationException ex)

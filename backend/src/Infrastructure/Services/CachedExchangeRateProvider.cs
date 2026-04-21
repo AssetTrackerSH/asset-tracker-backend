@@ -9,6 +9,7 @@ using PortfolioTracker.Infrastructure.Configuration;
 using PortfolioTracker.Infrastructure.ExternalServices.Binance;
 using PortfolioTracker.Infrastructure.ExternalServices.GoldApi;
 using PortfolioTracker.Infrastructure.ExternalServices.Tcmb;
+using PortfolioTracker.Infrastructure.ExternalServices.Twelvedata;
 
 namespace PortfolioTracker.Infrastructure.Services;
 
@@ -17,14 +18,22 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
     private readonly ITcmbClient _tcmbClient;
     private readonly IGoldApiClient _goldApiClient;
     private readonly IBinanceClient _binanceClient;
+    private readonly ITwelvedataClient _twelvedataClient;
     private readonly IMemoryCache _cache;
     private readonly ILogger<CachedExchangeRateProvider> _logger;
     private readonly TcmbOptions _options;
     private readonly BinanceOptions _binanceOptions;
+    private readonly TwelvedataOptions _twelvedataOptions;
 
     private const string ExchangeRatesCacheKeyPrefix = "ExchangeRates";
     private const string PreciousMetalsCacheKeyPrefix = "PreciousMetals";
     private const string CryptoCacheKeyPrefix = "Crypto";
+    private const string StocksCacheKeyPrefix = "Stocks";
+
+    private static readonly string[] SupportedStockSymbols =
+    [
+        "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "NFLX"
+    ];
     private const decimal TroyOunceToGrams = 31.1034768m;
 
     private static readonly (string Symbol, PreciousMetalType MetalType)[] SupportedMetals =
@@ -45,18 +54,22 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
         ITcmbClient tcmbClient,
         IGoldApiClient goldApiClient,
         IBinanceClient binanceClient,
+        ITwelvedataClient twelvedataClient,
         IMemoryCache cache,
         ILogger<CachedExchangeRateProvider> logger,
         IOptions<TcmbOptions> options,
-        IOptions<BinanceOptions> binanceOptions)
+        IOptions<BinanceOptions> binanceOptions,
+        IOptions<TwelvedataOptions> twelvedataOptions)
     {
         _tcmbClient = tcmbClient ?? throw new ArgumentNullException(nameof(tcmbClient));
         _goldApiClient = goldApiClient ?? throw new ArgumentNullException(nameof(goldApiClient));
         _binanceClient = binanceClient ?? throw new ArgumentNullException(nameof(binanceClient));
+        _twelvedataClient = twelvedataClient ?? throw new ArgumentNullException(nameof(twelvedataClient));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _binanceOptions = binanceOptions?.Value ?? throw new ArgumentNullException(nameof(binanceOptions));
+        _twelvedataOptions = twelvedataOptions?.Value ?? throw new ArgumentNullException(nameof(twelvedataOptions));
     }
 
     public async Task<IReadOnlyList<ExchangeRate>> GetLatestExchangeRatesAsync(CancellationToken cancellationToken = default)
@@ -207,6 +220,74 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
         _logger.LogInformation("Cached {Count} crypto prices", cryptoPrices.Count);
 
         return cryptoPrices;
+    }
+
+    public async Task<IReadOnlyList<StockPrice>> GetLatestStockPricesAsync(CancellationToken cancellationToken = default)
+    {
+        if (_cache.TryGetValue<IReadOnlyList<StockPrice>>(StocksCacheKeyPrefix, out var cached))
+        {
+            _logger.LogDebug("Stock prices found in cache");
+            return cached!;
+        }
+
+        var tcmbResponse = await _tcmbClient.GetDailyCurrencyRatesAsync(cancellationToken);
+        var usdCurrency = tcmbResponse.Currencies.FirstOrDefault(c => c.Code == "USD");
+
+        if (usdCurrency is null || usdCurrency.ForexBuying <= 0)
+        {
+            _logger.LogWarning("USD/TRY rate not found in TCMB response, cannot convert stock prices");
+            return Array.Empty<StockPrice>();
+        }
+
+        var usdToTryRate = usdCurrency.ForexBuying;
+
+        // ("THYAO", "BIST") → "THYAO:BIST"
+        var symbols = _twelvedataOptions.Stocks
+            .Select(s => $"{s.Symbol}:{s.Exchange}")
+            .ToList();
+
+        if (symbols.Count == 0)
+        {
+            _logger.LogWarning("No stock symbols configured in TwelvedataOptions");
+            return Array.Empty<StockPrice>();
+        }
+
+        var quotes = await _twelvedataClient.GetQuotesAsync(symbols, cancellationToken);
+
+        var stockPrices = new List<StockPrice>();
+
+        foreach (var quote in quotes)
+        {
+            try
+            {
+                if (!decimal.TryParse(quote.Close, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var priceInUsd))
+                {
+                    _logger.LogWarning("Failed to parse price for {Symbol}: {Close}", quote.Symbol, quote.Close);
+                    continue;
+                }
+
+                var priceInTry = priceInUsd * usdToTryRate;
+                var date = DateTime.TryParse(quote.Datetime, out var parsedDate) ? parsedDate : DateTime.UtcNow;
+
+                stockPrices.Add(new StockPrice(quote.Symbol, quote.Name, quote.Exchange, priceInUsd, priceInTry, date));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to process stock quote for {Symbol}, skipping", quote.Symbol);
+            }
+        }
+
+        var cacheOptions = new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_twelvedataOptions.CacheExpirationMinutes)
+        };
+
+        _cache.Set(StocksCacheKeyPrefix, stockPrices, cacheOptions);
+
+        _logger.LogInformation("Cached {Count} stock prices", stockPrices.Count);
+
+        return stockPrices;
     }
 
     private static DateTime ParseTcmbDate(string dateString)
