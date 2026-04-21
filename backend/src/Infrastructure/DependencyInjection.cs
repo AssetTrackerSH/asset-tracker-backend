@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using PortfolioTracker.Domain.Services;
 using PortfolioTracker.Infrastructure.Configuration;
+using PortfolioTracker.Infrastructure.ExternalServices.Binance;
 using PortfolioTracker.Infrastructure.ExternalServices.GoldApi;
 using PortfolioTracker.Infrastructure.ExternalServices.Tcmb;
 using PortfolioTracker.Infrastructure.Services;
@@ -23,6 +24,10 @@ public static class DependencyInjection
         services.Configure<GoldApiOptions>(
             configuration.GetSection(GoldApiOptions.SectionName));
 
+        // Configure BinanceOptions
+        services.Configure<BinanceOptions>(
+            configuration.GetSection(BinanceOptions.SectionName));
+
         // Register HttpClient for TCMB
         services.AddHttpClient<ITcmbClient, TcmbClient>((serviceProvider, client) =>
         {
@@ -35,6 +40,14 @@ public static class DependencyInjection
         services.AddHttpClient<IGoldApiClient, GoldApiClient>((serviceProvider, client) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<GoldApiOptions>>().Value;
+            client.BaseAddress = new Uri(options.BaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
+        });
+
+        // Register HttpClient for Binance
+        services.AddHttpClient<IBinanceClient, BinanceClient>((serviceProvider, client) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<BinanceOptions>>().Value;
             client.BaseAddress = new Uri(options.BaseUrl);
             client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
         });
