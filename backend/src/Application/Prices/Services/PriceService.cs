@@ -118,12 +118,38 @@ public class PriceService : IPriceService
                 });
             }
 
+            var cryptoPrices = await _exchangeRateProvider.GetLatestCryptoPricesAsync(cancellationToken);
+
+            var cryptoDtos = cryptoPrices
+                .Select(c => new CryptoPriceDto
+                {
+                    Symbol = c.Symbol,
+                    PriceInUsd = c.PriceInUsd,
+                    PriceInTry = c.PriceInTry
+                })
+                .ToList();
+
+            var stockPrices = await _exchangeRateProvider.GetLatestStockPricesAsync(cancellationToken);
+
+            var stockDtos = stockPrices
+                .Select(s => new StockPriceDto
+                {
+                    Symbol = s.Symbol,
+                    Name = s.Name,
+                    Exchange = s.Exchange,
+                    PriceInUsd = s.PriceInUsd,
+                    PriceInTry = s.PriceInTry
+                })
+                .ToList();
+
             return new PriceResponseDto
             {
                 BaseCurrency = baseCurrencyCode.Code,
                 Timestamp = DateTime.UtcNow,
                 Currencies = currencyDtos,
-                PreciousMetals = metalDtos
+                PreciousMetals = metalDtos,
+                Cryptos = cryptoDtos,
+                Stocks = stockDtos
             };
         }
         catch (InvalidOperationException ex)
