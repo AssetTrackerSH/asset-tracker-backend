@@ -9,7 +9,7 @@ using PortfolioTracker.Infrastructure.Configuration;
 using PortfolioTracker.Infrastructure.ExternalServices.Binance;
 using PortfolioTracker.Infrastructure.ExternalServices.GoldApi;
 using PortfolioTracker.Infrastructure.ExternalServices.Tcmb;
-using PortfolioTracker.Infrastructure.ExternalServices.Twelvedata;
+using PortfolioTracker.Infrastructure.ExternalServices.TradingView;
 
 namespace PortfolioTracker.Infrastructure.Services;
 
@@ -18,12 +18,12 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
     private readonly ITcmbClient _tcmbClient;
     private readonly IGoldApiClient _goldApiClient;
     private readonly IBinanceClient _binanceClient;
-    private readonly ITwelvedataClient _twelvedataClient;
+    private readonly ITradingViewClient _tradingViewClient;
     private readonly IMemoryCache _cache;
     private readonly ILogger<CachedExchangeRateProvider> _logger;
     private readonly TcmbOptions _options;
     private readonly BinanceOptions _binanceOptions;
-    private readonly TwelvedataOptions _twelvedataOptions;
+    private readonly TradingViewOptions _tradingViewOptions;
 
     private const string ExchangeRatesCacheKeyPrefix = "ExchangeRates";
     private const string PreciousMetalsCacheKeyPrefix = "PreciousMetals";
@@ -54,22 +54,22 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
         ITcmbClient tcmbClient,
         IGoldApiClient goldApiClient,
         IBinanceClient binanceClient,
-        ITwelvedataClient twelvedataClient,
+        ITradingViewClient tradingViewClient,
         IMemoryCache cache,
         ILogger<CachedExchangeRateProvider> logger,
         IOptions<TcmbOptions> options,
         IOptions<BinanceOptions> binanceOptions,
-        IOptions<TwelvedataOptions> twelvedataOptions)
+        IOptions<TradingViewOptions> tradingViewOptions)
     {
         _tcmbClient = tcmbClient ?? throw new ArgumentNullException(nameof(tcmbClient));
         _goldApiClient = goldApiClient ?? throw new ArgumentNullException(nameof(goldApiClient));
         _binanceClient = binanceClient ?? throw new ArgumentNullException(nameof(binanceClient));
-        _twelvedataClient = twelvedataClient ?? throw new ArgumentNullException(nameof(twelvedataClient));
+        _tradingViewClient = tradingViewClient ?? throw new ArgumentNullException(nameof(tradingViewClient));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _binanceOptions = binanceOptions?.Value ?? throw new ArgumentNullException(nameof(binanceOptions));
-        _twelvedataOptions = twelvedataOptions?.Value ?? throw new ArgumentNullException(nameof(twelvedataOptions));
+        _tradingViewOptions = tradingViewOptions?.Value ?? throw new ArgumentNullException(nameof(tradingViewOptions));
     }
 
     public async Task<IReadOnlyList<ExchangeRate>> GetLatestExchangeRatesAsync(CancellationToken cancellationToken = default)
@@ -241,18 +241,17 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
 
         var usdToTryRate = usdCurrency.ForexBuying;
 
-        // ("THYAO", "BIST") → "THYAO:BIST"
-        var symbols = _twelvedataOptions.Stocks
-            .Select(s => $"{s.Symbol}:{s.Exchange}")
-            .ToList();
+        // appsettings.json'daki "TradingView:Symbols" listesi — örn. ["THYAO", "AKBNK", "GARAN"]
+        var symbols = _tradingViewOptions.Symbols;
 
         if (symbols.Count == 0)
         {
-            _logger.LogWarning("No stock symbols configured in TwelvedataOptions");
+            _logger.LogWarning("No stock symbols configured in TradingViewOptions");
             return Array.Empty<StockPrice>();
         }
 
-        var quotes = await _twelvedataClient.GetQuotesAsync(symbols, cancellationToken);
+        // TradingView'a POST isteği atılır; BIST fiyatları TRY cinsinden döner
+        var quotes = await _tradingViewClient.GetQuotesAsync(symbols, cancellationToken);
 
         var stockPrices = new List<StockPrice>();
 
@@ -260,17 +259,19 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
         {
             try
             {
-                if (!decimal.TryParse(quote.Close, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out var priceInUsd))
+                // Piyasa kapalıysa veya veri yoksa Close null gelebilir
+                if (quote.Close is null)
                 {
-                    _logger.LogWarning("Failed to parse price for {Symbol}: {Close}", quote.Symbol, quote.Close);
+                    _logger.LogWarning("No price returned for symbol: {Symbol}", quote.Symbol);
                     continue;
                 }
 
-                var priceInTry = priceInUsd * usdToTryRate;
-                var date = DateTime.TryParse(quote.Datetime, out var parsedDate) ? parsedDate : DateTime.UtcNow;
+                // TradingView BIST fiyatını direkt TRY olarak verir — USD→TRY çevirisine gerek yok.
+                // USD değeri ise tersine hesaplanır.
+                var priceInTry = quote.Close.Value;
+                var priceInUsd = usdToTryRate > 0 ? priceInTry / usdToTryRate : 0;
 
-                stockPrices.Add(new StockPrice(quote.Symbol, quote.Name, quote.Exchange, priceInUsd, priceInTry, date));
+                stockPrices.Add(new StockPrice(quote.Symbol, quote.Description, "BIST", priceInUsd, priceInTry, DateTime.UtcNow));
             }
             catch (Exception ex)
             {
@@ -280,7 +281,8 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
 
         var cacheOptions = new MemoryCacheEntryOptions
         {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_twelvedataOptions.CacheExpirationMinutes)
+            // Cache süresi appsettings'ten okunur (varsayılan 15 dakika)
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_tradingViewOptions.CacheExpirationMinutes)
         };
 
         _cache.Set(StocksCacheKeyPrefix, stockPrices, cacheOptions);
