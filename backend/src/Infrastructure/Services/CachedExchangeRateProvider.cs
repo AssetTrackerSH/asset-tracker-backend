@@ -30,10 +30,6 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
     private const string CryptoCacheKeyPrefix = "Crypto";
     private const string StocksCacheKeyPrefix = "Stocks";
 
-    private static readonly string[] SupportedStockSymbols =
-    [
-        "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "NFLX"
-    ];
     private const decimal TroyOunceToGrams = 31.1034768m;
 
     private static readonly (string Symbol, PreciousMetalType MetalType)[] SupportedMetals =
@@ -112,12 +108,7 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
             .Cast<ExchangeRate>()
             .ToList();
 
-        var cacheOptions = new MemoryCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_options.CacheExpirationMinutes)
-        };
-
-        _cache.Set(cacheKey, exchangeRates, cacheOptions);
+        _cache.Set(cacheKey, exchangeRates, CreateCacheOptions(_options.CacheExpirationMinutes));
 
         _logger.LogInformation("Cached {Count} exchange rates for {Duration} minutes",
             exchangeRates.Count, _options.CacheExpirationMinutes);
@@ -135,44 +126,32 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
             return cached!;
         }
 
-        var tcmbResponse = await _tcmbClient.GetDailyCurrencyRatesAsync(cancellationToken);
-        var usdCurrency = tcmbResponse.Currencies.FirstOrDefault(c => c.Code == "USD");
-
-        if (usdCurrency is null || usdCurrency.ForexBuying <= 0)
-        {
-            _logger.LogWarning("USD/TRY rate not found in TCMB response, cannot convert precious metal prices");
+        var tcmbData = await GetTcmbUsdRateAsync(cancellationToken);
+        if (tcmbData is null)
             return Array.Empty<PreciousMetalPrice>();
-        }
 
-        var usdToTryRate = usdCurrency.ForexBuying;
-        var date = ParseTcmbDate(tcmbResponse.Date);
+        var (usdToTryRate, date) = tcmbData.Value;
 
-        var metals = new List<PreciousMetalPrice>();
-
-        foreach (var (symbol, metalType) in SupportedMetals)
+        var metalResults = await Task.WhenAll(SupportedMetals.Select(async m =>
         {
             try
             {
-                var spotPrice = await _goldApiClient.GetSpotPriceAsync(symbol, cancellationToken);
-
-                // spotPrice.Price USD/oz → TRY/oz → TRY/gram
+                var spotPrice = await _goldApiClient.GetSpotPriceAsync(m.Symbol, cancellationToken);
+                // spotPrice.Price is USD/oz — convert to TRY/oz then TRY/gram
                 var pricePerOunceInTry = spotPrice.Price * usdToTryRate;
                 var pricePerGramInTry = pricePerOunceInTry / TroyOunceToGrams;
-
-                metals.Add(new PreciousMetalPrice(metalType, pricePerGramInTry, pricePerOunceInTry, date));
+                return new PreciousMetalPrice(m.MetalType, pricePerGramInTry, pricePerOunceInTry, date);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to fetch price for {Symbol}, skipping", symbol);
+                _logger.LogWarning(ex, "Failed to fetch price for {Symbol}, skipping", m.Symbol);
+                return null;
             }
-        }
+        }));
 
-        var cacheOptions = new MemoryCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_options.CacheExpirationMinutes)
-        };
+        var metals = metalResults.Where(m => m is not null).Cast<PreciousMetalPrice>().ToList();
 
-        _cache.Set(cacheKey, metals, cacheOptions);
+        _cache.Set(cacheKey, metals, CreateCacheOptions(_options.CacheExpirationMinutes));
 
         _logger.LogInformation("Cached {Count} precious metal prices", metals.Count);
 
@@ -187,17 +166,11 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
             return cached!;
         }
 
-        // USD/TRY kuru için TCMB'ye git
-        var tcmbResponse = await _tcmbClient.GetDailyCurrencyRatesAsync(cancellationToken);
-        var usdCurrency = tcmbResponse.Currencies.FirstOrDefault(c => c.Code == "USD");
-
-        if (usdCurrency is null || usdCurrency.ForexBuying <= 0)
-        {
-            _logger.LogWarning("USD/TRY rate not found in TCMB response, cannot convert crypto prices");
+        var tcmbData = await GetTcmbUsdRateAsync(cancellationToken);
+        if (tcmbData is null)
             return Array.Empty<CryptoPrice>();
-        }
 
-        var usdToTryRate = usdCurrency.ForexBuying;
+        var usdToTryRate = tcmbData.Value.UsdToTryRate;
         var tickers = await _binanceClient.GetTickerPricesAsync(SupportedCryptoSymbols, cancellationToken);
 
         var cryptoPrices = tickers
@@ -210,12 +183,7 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
             })
             .ToList();
 
-        var cacheOptions = new MemoryCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_binanceOptions.CacheExpirationMinutes)
-        };
-
-        _cache.Set(CryptoCacheKeyPrefix, cryptoPrices, cacheOptions);
+        _cache.Set(CryptoCacheKeyPrefix, cryptoPrices, CreateCacheOptions(_binanceOptions.CacheExpirationMinutes));
 
         _logger.LogInformation("Cached {Count} crypto prices", cryptoPrices.Count);
 
@@ -230,18 +198,11 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
             return cached!;
         }
 
-        var tcmbResponse = await _tcmbClient.GetDailyCurrencyRatesAsync(cancellationToken);
-        var usdCurrency = tcmbResponse.Currencies.FirstOrDefault(c => c.Code == "USD");
-
-        if (usdCurrency is null || usdCurrency.ForexBuying <= 0)
-        {
-            _logger.LogWarning("USD/TRY rate not found in TCMB response, cannot convert stock prices");
+        var tcmbData = await GetTcmbUsdRateAsync(cancellationToken);
+        if (tcmbData is null)
             return Array.Empty<StockPrice>();
-        }
 
-        var usdToTryRate = usdCurrency.ForexBuying;
-
-        // appsettings.json'daki "TradingView:Symbols" listesi — örn. ["THYAO", "AKBNK", "GARAN"]
+        var usdToTryRate = tcmbData.Value.UsdToTryRate;
         var symbols = _tradingViewOptions.Symbols;
 
         if (symbols.Count == 0)
@@ -279,18 +240,29 @@ public class CachedExchangeRateProvider : IExchangeRateProvider
             }
         }
 
-        var cacheOptions = new MemoryCacheEntryOptions
-        {
-            // Cache süresi appsettings'ten okunur (varsayılan 15 dakika)
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_tradingViewOptions.CacheExpirationMinutes)
-        };
-
-        _cache.Set(StocksCacheKeyPrefix, stockPrices, cacheOptions);
+        _cache.Set(StocksCacheKeyPrefix, stockPrices, CreateCacheOptions(_tradingViewOptions.CacheExpirationMinutes));
 
         _logger.LogInformation("Cached {Count} stock prices", stockPrices.Count);
 
         return stockPrices;
     }
+
+    private async Task<(decimal UsdToTryRate, DateTime Date)?> GetTcmbUsdRateAsync(CancellationToken cancellationToken)
+    {
+        var rates = await GetLatestExchangeRatesAsync(cancellationToken);
+        var usd = rates.FirstOrDefault(r => r.CurrencyCode.Code == "USD");
+
+        if (usd is null)
+        {
+            _logger.LogWarning("USD/TRY rate not found in TCMB response");
+            return null;
+        }
+
+        return (usd.GetEffectiveBuyingRate(), usd.Date);
+    }
+
+    private static MemoryCacheEntryOptions CreateCacheOptions(int expirationMinutes) =>
+        new() { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(expirationMinutes) };
 
     private static DateTime ParseTcmbDate(string dateString)
     {

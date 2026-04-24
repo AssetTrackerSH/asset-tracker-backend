@@ -15,10 +15,6 @@ public class TradingViewScanRequest
     [JsonPropertyName("filter")]
     public List<TradingViewFilter>? Filter { get; set; }
 
-    // Sıralama kuralı (opsiyonel)
-    [JsonPropertyName("sort")]
-    public TradingViewSort? Sort { get; set; }
-
     // Sayfalama: [başlangıç_index, bitiş_index]
     // Örn: [0, 3] → ilk 3 satırı getir
     [JsonPropertyName("range")]
@@ -43,13 +39,3 @@ public class TradingViewFilter
     public object Right { get; set; } = new();
 }
 
-// Sıralama seçenekleri
-public class TradingViewSort
-{
-    [JsonPropertyName("sortBy")]
-    public string SortBy { get; set; } = "name";
-
-    // "asc" = artan, "desc" = azalan
-    [JsonPropertyName("sortOrder")]
-    public string SortOrder { get; set; } = "asc";
-}
