@@ -1,8 +1,10 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using PortfolioTracker.Domain.Services;
 using PortfolioTracker.Infrastructure.Configuration;
+using PortfolioTracker.Infrastructure.Data;
 using PortfolioTracker.Infrastructure.ExternalServices.Binance;
 using PortfolioTracker.Infrastructure.ExternalServices.GoldApi;
 using PortfolioTracker.Infrastructure.ExternalServices.Tcmb;
@@ -17,6 +19,9 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddDbContext<AppDbContext>(options =>
+            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+
         // Configure TcmbOptions
         services.Configure<TcmbOptions>(
             configuration.GetSection(TcmbOptions.SectionName));

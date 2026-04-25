@@ -4,8 +4,9 @@ public class UserPortfolio
 {
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int AssetId { get; set; }
+    public decimal Amount { get; set; }
 
     public User User { get; set; } = null!;
+    public Asset Asset { get; set; } = null!;
 }
