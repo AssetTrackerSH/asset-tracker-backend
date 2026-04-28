@@ -9,6 +9,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<UserPortfolio> UserPortfolios => Set<UserPortfolio>();
     public DbSet<CurrencyPrice> CurrencyPrices => Set<CurrencyPrice>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +53,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .WithMany()
                 .HasForeignKey(cp => cp.AssetId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RefreshToken>(e =>
+        {
+            e.HasKey(rt => rt.Id);
+            // Token kolonu unique: aynı token değeri iki kez DB'ye giremez.
+            // Aynı zamanda index görevi görür — "WHERE Token = ?" sorgusu hızlı çalışır.
+            e.HasIndex(rt => rt.Token).IsUnique();
+            e.HasOne(rt => rt.User)
+                .WithMany()
+                .HasForeignKey(rt => rt.UserId)
+                .OnDelete(DeleteBehavior.Cascade); // Kullanıcı silinince refresh token'ları da silinir.
         });
     }
 }
