@@ -1,8 +1,11 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using PortfolioTracker.Application.Auth.Services;
 using PortfolioTracker.Domain.Services;
 using PortfolioTracker.Infrastructure.Configuration;
+using PortfolioTracker.Infrastructure.Data;
 using PortfolioTracker.Infrastructure.ExternalServices.Binance;
 using PortfolioTracker.Infrastructure.ExternalServices.GoldApi;
 using PortfolioTracker.Infrastructure.ExternalServices.Tcmb;
@@ -17,6 +20,9 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddDbContext<AppDbContext>(options =>
+            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+
         // Configure TcmbOptions
         services.Configure<TcmbOptions>(
             configuration.GetSection(TcmbOptions.SectionName));
@@ -72,6 +78,12 @@ public static class DependencyInjection
 
         // Register services
         services.AddScoped<IExchangeRateProvider, CachedExchangeRateProvider>();
+
+        // IJwtTokenService → JwtTokenService: token üretimi.
+        // IAuthService → AuthService: register, login, refresh iş mantığı.
+        // Her ikisi de Scoped — AppDbContext ile aynı lifetime'da olmalı.
+        services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<IAuthService, AuthService>();
 
         return services;
     }
