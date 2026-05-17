@@ -5,5 +5,6 @@ namespace PortfolioTracker.Application.Portfolio.DTOs;
 /// </summary>
 public record AddAssetRequest(
     int AssetId,
-    decimal Amount
+    decimal Amount,
+    decimal BuyPrice
 );

@@ -19,6 +19,16 @@ public class PortfolioController : ControllerBase
         _portfolioService = portfolioService;
     }
 
+    /// <summary>Portföy özeti — toplam maliyet, net kazanç, getiri %</summary>
+    [HttpGet("summary")]
+    [ProducesResponseType(typeof(PortfolioSummaryDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetSummary()
+    {
+        var userId = GetUserId();
+        var summary = await _portfolioService.GetSummaryAsync(userId);
+        return Ok(summary);
+    }
+
     /// <summary>Kullanıcının portföyünü döner</summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<PortfolioItemDto>), StatusCodes.Status200OK)]
@@ -67,6 +77,47 @@ public class PortfolioController : ControllerBase
         catch (KeyNotFoundException ex)
         {
             return NotFound(new ProblemDetails { Title = "Bulunamadı", Detail = ex.Message, Status = 404 });
+        }
+    }
+
+    /// <summary>Mevcut varlığa ek alım yap (ağırlıklı ortalama maliyet hesaplanır)</summary>
+    [HttpPost("assets/{id:guid}/buy")]
+    [ProducesResponseType(typeof(PortfolioItemDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> BuyMore(Guid id, [FromBody] BuyAssetRequest request)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var item = await _portfolioService.BuyMoreAsync(userId, id, request);
+            return Ok(item);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ProblemDetails { Title = "Bulunamadı", Detail = ex.Message, Status = 404 });
+        }
+    }
+
+    /// <summary>Varlık sat (kısmi veya tam)</summary>
+    [HttpPost("assets/{id:guid}/sell")]
+    [ProducesResponseType(typeof(SellResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SellAsset(Guid id, [FromBody] SellAssetRequest request)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var result = await _portfolioService.SellAssetAsync(userId, id, request);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ProblemDetails { Title = "Bulunamadı", Detail = ex.Message, Status = 404 });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new ProblemDetails { Title = "Geçersiz İstek", Detail = ex.Message, Status = 400 });
         }
     }
 

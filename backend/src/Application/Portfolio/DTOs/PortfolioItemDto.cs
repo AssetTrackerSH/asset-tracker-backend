@@ -13,6 +13,10 @@ public record PortfolioItemDto(
     string Name,
     AssetType Type,
     decimal Amount,
+    decimal BuyPrice,
     decimal CurrentPrice,
-    decimal TotalValue
+    decimal CostBasis,
+    decimal TotalValue,
+    decimal ProfitLoss,
+    decimal ProfitLossPercent
 );

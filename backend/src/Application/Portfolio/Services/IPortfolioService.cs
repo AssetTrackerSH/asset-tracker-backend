@@ -29,8 +29,21 @@ public interface IPortfolioService
     Task DeleteAssetAsync(Guid userId, Guid portfolioItemId);
 
     /// <summary>
+    /// Mevcut varlığa ek alım yapar. Miktar eklenir, alış fiyatı ağırlıklı ortalamaya göre güncellenir.
+    /// </summary>
+    Task<PortfolioItemDto> BuyMoreAsync(Guid userId, Guid portfolioItemId, BuyAssetRequest request);
+
+    /// <summary>
+    /// Varlık satar. Kısmi satışta miktar azalır, tam satışta portföyden silinir.
+    /// SellPrice girilmezse mevcut piyasa fiyatı kullanılır.
+    /// </summary>
+    Task<SellResultDto> SellAssetAsync(Guid userId, Guid portfolioItemId, SellAssetRequest request);
+
+    /// <summary>
     /// Desteklenen tüm varlıkları döner (seed data).
     /// Flutter "varlık ekle" ekranında bu listeyi kullanır.
     /// </summary>
     Task<IEnumerable<AssetDto>> GetAssetsAsync();
+
+    Task<PortfolioSummaryDto> GetSummaryAsync(Guid userId);
 }

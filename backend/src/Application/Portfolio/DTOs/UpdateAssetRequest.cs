@@ -4,5 +4,6 @@ namespace PortfolioTracker.Application.Portfolio.DTOs;
 /// PUT /api/portfolio/assets/{id} — varlık miktarını güncelle.
 /// </summary>
 public record UpdateAssetRequest(
-    decimal Amount
+    decimal Amount,
+    decimal? BuyPrice
 );
