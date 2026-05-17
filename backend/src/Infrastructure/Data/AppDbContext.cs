@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PortfolioTracker.Domain.Entities;
+using PortfolioTracker.Domain.Enums;
 
 namespace PortfolioTracker.Infrastructure.Data;
 
@@ -10,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<UserPortfolio> UserPortfolios => Set<UserPortfolio>();
     public DbSet<CurrencyPrice> CurrencyPrices => Set<CurrencyPrice>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Transaction> Transactions => Set<Transaction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -29,6 +31,35 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.Symbol).IsRequired().HasMaxLength(20);
             e.Property(a => a.Name).IsRequired().HasMaxLength(100);
             e.HasIndex(a => a.Symbol).IsUnique();
+
+            // Seed data: desteklenen tüm varlıklar.
+            // Id'ler sabit — migration'lar arası tutarlılık için elle belirlendi.
+            e.HasData(
+                // Döviz
+                new { Id = 1,  Symbol = "USD", Name = "Amerikan Doları",   Type = AssetType.Currency },
+                new { Id = 2,  Symbol = "EUR", Name = "Euro",              Type = AssetType.Currency },
+                new { Id = 3,  Symbol = "GBP", Name = "İngiliz Sterlini",  Type = AssetType.Currency },
+                new { Id = 4,  Symbol = "CHF", Name = "İsviçre Frangı",    Type = AssetType.Currency },
+                new { Id = 5,  Symbol = "JPY", Name = "Japon Yeni",        Type = AssetType.Currency },
+
+                // Kripto
+                new { Id = 6,  Symbol = "BTC", Name = "Bitcoin",           Type = AssetType.Crypto },
+                new { Id = 7,  Symbol = "ETH", Name = "Ethereum",          Type = AssetType.Crypto },
+                new { Id = 8,  Symbol = "BNB", Name = "BNB",               Type = AssetType.Crypto },
+                new { Id = 9,  Symbol = "SOL", Name = "Solana",            Type = AssetType.Crypto },
+                new { Id = 10, Symbol = "XRP", Name = "XRP",               Type = AssetType.Crypto },
+
+                // Altın / Gümüş
+                new { Id = 11, Symbol = "XAU", Name = "Altın (gram)",      Type = AssetType.PreciousMetal },
+                new { Id = 12, Symbol = "XAG", Name = "Gümüş (gram)",      Type = AssetType.PreciousMetal },
+
+                // BIST Hisse Senetleri
+                new { Id = 13, Symbol = "THYAO", Name = "Türk Hava Yolları",       Type = AssetType.Stock },
+                new { Id = 14, Symbol = "GARAN", Name = "Garanti BBVA",            Type = AssetType.Stock },
+                new { Id = 15, Symbol = "ASELS", Name = "Aselsan",                 Type = AssetType.Stock },
+                new { Id = 16, Symbol = "EREGL", Name = "Ereğli Demir Çelik",      Type = AssetType.Stock },
+                new { Id = 17, Symbol = "SISE",  Name = "Şişe Cam",                Type = AssetType.Stock }
+            );
         });
 
         modelBuilder.Entity<UserPortfolio>(e =>
@@ -53,6 +84,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .WithMany()
                 .HasForeignKey(cp => cp.AssetId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Transaction>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Amount).HasColumnType("decimal(18,8)");
+            e.Property(t => t.Price).HasColumnType("decimal(18,8)");
+            e.Property(t => t.TotalValue).HasColumnType("decimal(18,8)");
+            e.HasOne(t => t.User)
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(t => t.Asset)
+                .WithMany()
+                .HasForeignKey(t => t.AssetId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<RefreshToken>(e =>

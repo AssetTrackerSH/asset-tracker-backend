@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using PortfolioTracker.Application.Auth.Services;
+using PortfolioTracker.Application.Portfolio.Services;
 using PortfolioTracker.Domain.Services;
 using PortfolioTracker.Infrastructure.Configuration;
 using PortfolioTracker.Infrastructure.Data;
@@ -84,6 +85,7 @@ public static class DependencyInjection
         // Her ikisi de Scoped — AppDbContext ile aynı lifetime'da olmalı.
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IPortfolioService, PortfolioService>();
 
         return services;
     }
