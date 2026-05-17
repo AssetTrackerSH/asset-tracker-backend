@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<UserPortfolio> UserPortfolios => Set<UserPortfolio>();
     public DbSet<CurrencyPrice> CurrencyPrices => Set<CurrencyPrice>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Transaction> Transactions => Set<Transaction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -83,6 +84,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .WithMany()
                 .HasForeignKey(cp => cp.AssetId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Transaction>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Amount).HasColumnType("decimal(18,8)");
+            e.Property(t => t.Price).HasColumnType("decimal(18,8)");
+            e.Property(t => t.TotalValue).HasColumnType("decimal(18,8)");
+            e.HasOne(t => t.User)
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(t => t.Asset)
+                .WithMany()
+                .HasForeignKey(t => t.AssetId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<RefreshToken>(e =>

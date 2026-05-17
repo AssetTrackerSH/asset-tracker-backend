@@ -46,4 +46,6 @@ public interface IPortfolioService
     Task<IEnumerable<AssetDto>> GetAssetsAsync();
 
     Task<PortfolioSummaryDto> GetSummaryAsync(Guid userId);
+
+    Task<IEnumerable<TransactionDto>> GetTransactionsAsync(Guid userId, Guid portfolioItemId);
 }

@@ -98,6 +98,23 @@ public class PortfolioController : ControllerBase
         }
     }
 
+    /// <summary>Varlığın işlem geçmişini döner</summary>
+    [HttpGet("assets/{id:guid}/transactions")]
+    [ProducesResponseType(typeof(IEnumerable<TransactionDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetTransactions(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var transactions = await _portfolioService.GetTransactionsAsync(userId, id);
+            return Ok(transactions);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ProblemDetails { Title = "Bulunamadı", Detail = ex.Message, Status = 404 });
+        }
+    }
+
     /// <summary>Varlık sat (kısmi veya tam)</summary>
     [HttpPost("assets/{id:guid}/sell")]
     [ProducesResponseType(typeof(SellResultDto), StatusCodes.Status200OK)]

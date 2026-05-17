@@ -82,6 +82,17 @@ public class PortfolioService : IPortfolioService
         };
 
         _db.UserPortfolios.Add(portfolioItem);
+        _db.Transactions.Add(new Transaction
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            AssetId = request.AssetId,
+            Type = TransactionType.Buy,
+            Amount = request.Amount,
+            Price = request.BuyPrice,
+            TotalValue = request.Amount * request.BuyPrice,
+            Date = DateTime.UtcNow,
+        });
         await _db.SaveChangesAsync();
 
         _logger.LogInformation("Varlık eklendi: UserId={UserId}, Symbol={Symbol}, Amount={Amount}",
@@ -169,6 +180,17 @@ public class PortfolioService : IPortfolioService
         item.Amount += request.Amount;
         item.BuyPrice = item.Amount == 0 ? 0 : totalCost / item.Amount;
 
+        _db.Transactions.Add(new Transaction
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            AssetId = item.AssetId,
+            Type = TransactionType.Buy,
+            Amount = request.Amount,
+            Price = newBuyPrice,
+            TotalValue = request.Amount * newBuyPrice,
+            Date = DateTime.UtcNow,
+        });
         await _db.SaveChangesAsync();
 
         _logger.LogInformation("Ek alım yapıldı: UserId={UserId}, Symbol={Symbol}, AddedAmount={Amount}, NewAvgBuyPrice={BuyPrice}",
@@ -236,6 +258,17 @@ public class PortfolioService : IPortfolioService
         if (fullySold)
         {
             _db.UserPortfolios.Remove(item);
+            _db.Transactions.Add(new Transaction
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                AssetId = item.AssetId,
+                Type = TransactionType.Sell,
+                Amount = request.Amount,
+                Price = sellPrice,
+                TotalValue = request.Amount * sellPrice,
+                Date = DateTime.UtcNow,
+            });
             await _db.SaveChangesAsync();
 
             _logger.LogInformation("Tam satış: UserId={UserId}, Symbol={Symbol}, Amount={Amount}, SellPrice={SellPrice}, PnL={PnL}",
@@ -251,6 +284,17 @@ public class PortfolioService : IPortfolioService
         }
 
         item.Amount -= request.Amount;
+        _db.Transactions.Add(new Transaction
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            AssetId = item.AssetId,
+            Type = TransactionType.Sell,
+            Amount = request.Amount,
+            Price = sellPrice,
+            TotalValue = request.Amount * sellPrice,
+            Date = DateTime.UtcNow,
+        });
         await _db.SaveChangesAsync();
 
         _logger.LogInformation("Kısmi satış: UserId={UserId}, Symbol={Symbol}, SoldAmount={Amount}, Remaining={Remaining}, SellPrice={SellPrice}, PnL={PnL}",
@@ -281,6 +325,22 @@ public class PortfolioService : IPortfolioService
                 ProfitLossPercent: remainingPnlPct
             )
         );
+    }
+
+    public async Task<IEnumerable<TransactionDto>> GetTransactionsAsync(Guid userId, Guid portfolioItemId)
+    {
+        var item = await _db.UserPortfolios
+            .AsNoTracking()
+            .FirstOrDefaultAsync(up => up.Id == portfolioItemId && up.UserId == userId)
+            ?? throw new KeyNotFoundException("Portföy kalemi bulunamadı.");
+
+        return await _db.Transactions
+            .AsNoTracking()
+            .Where(t => t.UserId == userId && t.AssetId == item.AssetId)
+            .Include(t => t.Asset)
+            .OrderByDescending(t => t.Date)
+            .Select(t => new TransactionDto(t.Id, t.Asset.Symbol, t.Asset.Name, t.Type, t.Amount, t.Price, t.TotalValue, t.Date))
+            .ToListAsync();
     }
 
     public async Task<PortfolioSummaryDto> GetSummaryAsync(Guid userId)
